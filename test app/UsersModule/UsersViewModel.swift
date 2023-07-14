@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 final class UsersViewModel: ObservableObject {
     
@@ -6,6 +7,7 @@ final class UsersViewModel: ObservableObject {
     @Published var hasError = false
     @Published var error: UserError?
     @Published private(set) var isRefreshing = false
+    private var bag = Set<AnyCancellable>()
     
     func fetchUsers() {
         
@@ -50,12 +52,56 @@ final class UsersViewModel: ObservableObject {
                 }.resume()
         }
     }
+    
+    func fetchUsersCombine() {
+        
+        let urlString = "https://jsonplaceholder.typicode.com/users"
+        if let url = URL(string: urlString) {
+            
+            isRefreshing = true
+            hasError = false
+            
+            URLSession
+                .shared
+                .dataTaskPublisher(for: url)
+                .receive(on: DispatchQueue.main)
+                .tryMap({ result in
+                    guard let response = result.response as? HTTPURLResponse,
+                          response.statusCode >= 200 && response.statusCode <= 300 else {
+                        throw UserError.invalidStatusCode
+                    }
+                    
+                    let decoder = JSONDecoder()
+                    guard let users = try? decoder.decode([User].self, from: result.data) else {
+                        throw UserError.failedToDecode
+                    }
+                    return users
+                })
+                .sink { [weak self] result in
+                    defer { self?.isRefreshing = false }
+                    
+                    switch result {
+                    case .finished:
+                        break
+                    case .failure(let error):
+                        self?.hasError = true
+                        self?.error = UserError.custom(error: error)
+                    }
+                    
+                } receiveValue: { [weak self] users in
+                    self?.users = users
+                }
+                .store(in: &bag)
+        }
+        
+    }
 }
 
 extension UsersViewModel {
     enum UserError: LocalizedError {
         case custom(error: Error)
         case failedToDecode
+        case invalidStatusCode
         
         var errorDescription: String? {
             switch self {
@@ -63,6 +109,8 @@ extension UsersViewModel {
                 return error.localizedDescription
             case .failedToDecode:
                 return "Failed to decode response"
+            case .invalidStatusCode:
+                return "Invalid status code"
             }
         }
     }

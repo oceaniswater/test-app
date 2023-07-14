@@ -19,9 +19,9 @@ struct ContentView: View {
                     .navigationTitle("Users")
                 }
             }
-            .onAppear(perform: viewModel.fetchUsers)
+            .onAppear(perform: viewModel.fetchUsersCombine)
             .alert(isPresented: $viewModel.hasError, error: viewModel.error) {
-                Button(action: viewModel.fetchUsers) {
+                Button(action: viewModel.fetchUsersCombine) {
                     Text("Retry")
                 }
             }
